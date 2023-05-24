@@ -28,6 +28,10 @@
       "filename": "external-modules/external-modules.md"
     },
     {
+      "title": "Lab 5: Building an end-to-end Bookstore App with External Community Modules",
+      "filename": "graphql-mustache-fetch/graphql-mustache-fetch.md"
+    },
+    {
       "title": "Need Help?",
       "description": "Solutions to Common Problems and Directions for Receiving Live Help",
       "filename":"https://oracle-livelabs.github.io/common/labs/need-help/need-help-livelabs.md"
