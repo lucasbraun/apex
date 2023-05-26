@@ -108,7 +108,7 @@ If executed correctly, you should see something like this:
 
 ![](images/00-simple-fetch.png " ")
 
-We now know how to use the fetch API in principle. We'll use this knowledge again later, in Task 4, to assemble the app as a whole.
+We now know how to use the fetch API in principle. We'll use this knowledge again later to assemble the app as a whole.
 
 ## Task 2: Importing GraphQL Module
 Our application will make use of the open-source [GraphQL](https://www.npmjs.com/package/graphql) module.
@@ -134,9 +134,280 @@ What is left to do is to hit the "Create MLE Module" button and wait a few secon
 
 ![](images/04-graphql-module-created.png " ")
 
-## Task 3: Creating a GraphQL Schema for Book API
+## Task 3: Combining fetch, GraphQL and SQL Driver to produce Book Service Results
 
-## Task 4: Combining fetch, GraphQL and SQL Driver to produce Book Service Results
+### Creating the Inventory Table
+
+Next, let's create a table to store what we have on stock for some of those books. In SQL commands, switch language to "PL/SQL" and execute:
+
+```
+<copy>
+create table inventory(
+    id VARCHAR(128) PRIMARY KEY NOT NULL,
+    stock NUMBER
+);
+</copy>
+```
+
+After this table is created, let's fill it with some data. In the search bar, enter "Data Workshop" and open it:
+
+![](images/05-data-loading-1.png " ")
+
+Then, click on "Load Data" and select `inventory.xlsx` which you can download [here](files/inventory.xlsx).
+
+![](images/05-data-loading-2.png " ")
+
+Make sure to select "Existing Table" and select the INVENTORY table. After that click on "Load Data".
+
+![](images/05-data-loading-4.png " ")
+
+The data gets loaded and should look something like this:
+![](images/05-data-loading-5.png " ")
+
+### Creating the GraphQL Schema to combine Data fetched from Internet with data from the Database
+
+Next we create a module where we define the GraphQL schema for the books that we want to retrieve in our application.
+We define a number of GraphQL object types as well as a GraphQL schema object that combines those. 
+Some of the object types have so-called resolvers that tell the algorithm how to retrieve information, some of them use `fetch`, some of them query the database by using `session.execute`.
+
+Go into the object browser again and create a new MLE module named "BOOK_SCHEMA", selecting the "Source Code" option this time and inputting the following code:
+
+```
+<copy>
+import {
+  GraphQLSchema,
+  GraphQLObjectType,
+  GraphQLString,
+  GraphQLInt,
+  GraphQLFloat,
+  GraphQLList
+} from 'graphql';
+import 'mle-js-fetch'; 
+
+const BASE_URL = "https://www.googleapis.com/books/v1/volumes?q=";
+
+async function getBooks(searchTerm) {
+  session.execute("begin set_wallet; end;");
+  const response = await fetch(`${BASE_URL}${searchTerm}`, { credentials: "include" });
+  const result = await response.json();
+  return result;
+}
+
+const imageLinks = new GraphQLObjectType({
+    name: 'IMAGE_LINKS',
+    fields: () => ({
+        thumbnail: { 
+            type: GraphQLString, 
+        },
+    })
+});
+
+const author = new GraphQLObjectType({
+    name: 'AUTHOR',
+    fields: () => ({
+        name: { 
+            type: GraphQLString,
+            resolve: (author) => author || "Unknown",
+        },
+    })
+});
+
+const volumeInfo = new GraphQLObjectType({
+    name: 'VOLUME_INFO',
+    fields: () => ({
+        title: {
+            type: GraphQLString,
+        },
+        subtitle: {
+            type: GraphQLString,
+        },
+        publisher: {
+            type: GraphQLString,
+        },
+        description: {
+            type: GraphQLString,
+        },
+        authors: {
+            type: new GraphQLList(author),
+            resolve: (volumeInfo) => volumeInfo.authors || [],
+        },
+        publishedDate: {
+            type: GraphQLString,
+        },
+        imageLinks: {
+            type: imageLinks,
+        },
+        averageRating: {
+            type: GraphQLFloat,
+        },
+        pageCount: {
+            type: GraphQLInt,
+        },
+        language: {
+            type: GraphQLString,
+        }
+    })
+});
+
+const book = new GraphQLObjectType({
+    name: 'BOOK',
+    fields: () => ({
+        id: {
+            type: GraphQLString,
+            description: 'The id of the book.',
+        },
+        kind: {
+            type: GraphQLString,
+            description: 'The kind of the book.',
+        },
+        etag: {
+            type: GraphQLString,
+            description: 'The etag of the book.',
+        },
+        volumeInfo: {
+            type: volumeInfo,
+        },
+        stock: {
+            type: GraphQLInt,
+            resolve: (book) => {
+                const result = session.execute('select stock from inventory where id = :id', [book.id]);
+                if (result.rows.length > 0) {
+                    return result.rows[0][0];
+                } else {
+                    return 0;
+                }
+            }
+        },
+    })
+});
+
+const volumes = new GraphQLObjectType({
+    name: 'VOLUMES',
+    fields: () => ({
+        kind: { 
+            type: GraphQLString, 
+        },
+        totalItems: { 
+            type: GraphQLInt, 
+        },
+        items: { 
+            type: new GraphQLList(book), 
+        },
+    }),
+});
+
+const queryType = new GraphQLObjectType({
+    name: 'Query',
+    fields: () => ({
+        bookSearchResults: {
+            args: {
+                searchTerm: {
+                    type: GraphQLString,
+                },
+            },
+            type: volumes,
+            resolve: async (_source, {searchTerm}) => await getBooks(searchTerm),
+        },
+    }),
+});
+
+export const schema = new GraphQLSchema({
+    query: queryType,
+    types: [volumes, book, volumeInfo, author, imageLinks]
+});
+
+</copy>
+```
+
+Before hitting the "Create MLE Module" button, you should see something like this:
+
+![](images/06-create-schema-module.png " ")
+
+Hit that button to create the module.
+
+### Creating an MLE Environment
+Before we can use the MLE modules, we need to tell JavaScript how it can resolve certain import names like 'book-schema' to MLE modules like 'BOOK_SCHEMA'.
+
+In the object browser, hit the "+" button, select "MLE Environment":
+
+![](images/07-create-env.png " ")
+
+Enter "BOOK_APP" as the name for the evironment and click on "Create MLE Environment":
+
+![](images/08-create-book-app-env-1.png " ")
+
+Once created, click on "Add Import" to open the dialog for adding imports.
+
+![](images/08-create-book-app-env-2.png " ")
+
+Select "GRAPHQL" as schema and "graphql" as its import name and hit "CREATE":
+
+![](images/08-create-book-app-env-3.png " ")
+
+Repeat the same step for importing "BOOK_SCHEMA" as "book-schema":
+
+![](images/08-create-book-app-env-4.png " ")
+
+Finally, the created environment should look like this:
+
+![](images/08-create-book-app-env-5.png " ")
+
+### Writing Book Result function
+
+To conclude this task, we want to test whether the MLE modules that we imported, resp. created so far, do indeed work as intended.
+
+```
+<copy>
+const {graphql} = await import("graphql");
+const {schema} = await import("book-schema");
+
+const query1 = `
+    query BookQuery($searchTerm: String){
+        bookSearchResults(searchTerm:$searchTerm){
+            items {
+                volumeInfo {
+                    title
+                    authors {
+                        name
+                    }
+                    imageLinks {
+                        thumbnail
+                    }
+                }
+                stock
+            }
+        }
+    }
+`;
+
+async function getBooks(searchTerm, source) {
+  const result = await graphql({ schema, source, variableValues: {searchTerm}});
+  if (result.data) {
+      return result.data.bookSearchResults.items;
+  } else {
+      throw new Error(JSON.stringify(result.errors));
+  }
+};
+
+function flattenBookInfo(books) {
+    const result = [];
+    for (const book of books) {
+        result.push({
+            title: book.volumeInfo.title,
+            authors: book.volumeInfo.authors.map(author => author.name).join(', '),
+            imageLink: book.volumeInfo.imageLinks ? book.volumeInfo.imageLinks.thumbnail : '',
+            stock: book.stock
+        });
+    }
+    return result;
+}
+
+const books = await getBooks('Oracle', query1);
+console.log(JSON.stringify(books));
+console.log('-------');
+console.log(JSON.stringify(flattenBookInfo(books)));
+</copy>
+```
 
 ## Task 5: Exposing Book Service as RESTFull Service
 
