@@ -411,9 +411,32 @@ console.log(JSON.stringify(flattenBookInfo(books)));
 
 ## Task 5: Exposing Book Service as RESTFull Service
 
+TODO: complete
+
 ## Task 6: Creating Application for Book Service Consumption
 
-## Task 7: Using Mustache to render Book Service Results
+TODO: complete
+Here's what was discussed with Stefan Dobre on Slack how to do this:
+```
+1. create an MLE function call specification, that takes the search term as an argument, and returns a json array with all the data like id, title, image_url, body_html, etc. The inner workings of this function are an implementation detail. Use graphql, mustache, whatever.
+2. create a Cards region, with sql query source:
+
+select id,
+       title,
+       body_html
+  from json_table( get_movies( :P1_SEARCH ), '$[*]'
+        columns(
+            id          number          path '$.id',
+            title       varchar2(100)   path '$.title',
+            body_html   varchar2(4000)  path '$.body_html'
+        ) );
+
++ P1_SEARCH in Page Items to Submit
+then declaratively use ID, TITLE, BODY_HTML in the region's attributes as appropriate. see image.
+3. create a textfield P1_SEARCH, and a DA that on P1_SEARCH change, refreshes the cards region.
+```
+
+![](images/using_cards.png " ")
 
 ## **Summary**
 
